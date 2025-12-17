@@ -24,6 +24,7 @@
   "RedirectUri": "http://localhost:5000/callback/",
   "DAWidgetToken": "DA_WIDGET_TOKEN"
 }
+```
 - ClientId - ID OAuth-приложения DonationAlerts
 - ClientSecret - секрет OAuth-приложения
 - RedirectUri - Redirect URI из настроек OAuth (должен совпадать, "http://localhost:5000/callback/")
