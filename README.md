@@ -21,10 +21,19 @@
 
 ```json
 {
-  "ClientId": "DA_CLIENT_ID",
-  "ClientSecret": "DA_CLIENT_SECRET",
-  "RedirectUri": "http://localhost:5000/callback/",
-  "DAWidgetToken": "DA_WIDGET_TOKEN"
+  "Настройка DonationAlerts": {
+    "ID приложения": "",
+    "Секретный токен приложения": "",
+    "Секретный токен виджета": "",
+    "URL для отклика": "http://localhost:5000/callback/",
+    "Минимальный донат на музыку (чтобы API меньше дёргать)": 100
+  },
+  "Настройка DonationX": {
+    "ID клиента": "",
+    "URL для отклика": "http://localhost:3000/callback",
+    "Минимальный донат на музыку (чтобы API меньше дёргать)": 100
+  },
+  "WebHook для отправки текущей песни (если надо будет)": ""
 }
 ```
 
