@@ -1,21 +1,23 @@
-# DonationAlerts YouTube Queue Player
+# DonationMusic 
 
-Простое приложение для стримов: YouTube-плеер с очередью видео, которая пополняется через DonationAlerts и обновляется в реальном времени.
+Простое приложение для стримов: YouTube-плеер с очередью видео, которая пополняется через DonationAlerts и DonateX и обновляется в реальном времени.
 
 ## Возможности
 - Добавление YouTube-видео через донат
 - Ручное добавление и пропуск видео
 - Live-синхронизация через WebSocket
 - Очередь сохраняется между перезапусками
+- Есть возможность подключить WebHook
 
 ## Запуск
 В релизе уже есть **готовый `.exe`** — установка не требуется.
 
-1. Распаковать архив  
-2. Заполнить `config.json`  
-3. Запустить `DonationAlertsPlayer.exe`  
+1. Распаковать архив
+2. Заполнить `config.json`
+3. Установить NET 8
+4. Запустить `DonationMusic.exe`  
 
-## Настройка `config.json`
+## `config.json`
 
 ```json
 {
@@ -25,7 +27,12 @@
   "DAWidgetToken": "DA_WIDGET_TOKEN"
 }
 ```
-- ClientId - ID OAuth-приложения DonationAlerts
-- ClientSecret - секрет OAuth-приложения
-- RedirectUri - Redirect URI из настроек OAuth (должен совпадать, "http://localhost:5000/callback/")
-- DAWidgetToken - токен виджета DonationAlerts (Media Widget)
+
+## `WebHook`
+
+```json
+{
+"title":"",
+"url":""
+}
+```
