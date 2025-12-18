@@ -4,67 +4,101 @@ using System.Text;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json.Linq;
 
-class DonateXClient
+public class DonateXClient
 {
-    private const string ClientId = "BgNwbsf3Rfq02AASI5ChMg";
-    private const string RedirectUri = "http://localhost:5000/callback";
-    private const string Scope = "openid donations.read donations.subscribe";
-
-    static async Task Main(string[] args)
+    private const String Scope = "openid donations.read donations.subscribe donations.write";
+    private String _accessToken;
+    private Config _config;
+    
+    public class Donation
     {
-        string accessToken = await GetAccessTokenAsync();
-        Console.WriteLine("AccessToken получен!");
-
-        await SubscribeToDonationsAsync(accessToken);
+        public String Id { get; set; }
+        public String Username { get; set; }
+        public String Message { get; set; }
+        public String MusicLink { get; set; }
+        public Decimal AmountInRub { get; set; }
     }
 
-    static (string codeVerifier, string codeChallenge) GeneratePkce()
+    public event Action<Donation> OnDonation;
+
+    public DonateXClient()
+    {
+        _config = JsonLoader.LoadJson<Config>("config.json");
+    }
+
+    public async Task InitializeAsync()
+    {
+        _accessToken = await GetAccessTokenAsync();
+    }
+
+    public async Task StartAsync()
+    {
+        if (String.IsNullOrEmpty(_accessToken))
+            throw new Exception("AccessToken не получен. Сначала вызовите InitializeAsync().");
+
+        await SubscribeToDonationsAsync(_accessToken);
+    }
+
+    private static (String codeVerifier, String codeChallenge) GeneratePkce()
     {
         var codeVerifierBytes = RandomNumberGenerator.GetBytes(64);
-        string codeVerifier = Convert.ToBase64String(codeVerifierBytes)
+        String codeVerifier = Convert.ToBase64String(codeVerifierBytes)
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         using var sha256 = SHA256.Create();
         byte[] challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
-        string codeChallenge = Convert.ToBase64String(challengeBytes)
+        String codeChallenge = Convert.ToBase64String(challengeBytes)
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         return (codeVerifier, codeChallenge);
     }
 
-    static async Task<string> GetAccessTokenAsync()
+    private async Task<String> GetAccessTokenAsync()
     {
         var (codeVerifier, codeChallenge) = GeneratePkce();
 
-        string authUrl = $"https://donatex.gg/api/connect/authorize?" +
-                         $"client_id={ClientId}&redirect_uri={Uri.EscapeDataString(RedirectUri)}&" +
+        String authUrl = $"https://donatex.gg/api/connect/authorize?" +
+                         $"client_id={_config.DonationX.ClientId}&redirect_uri={_config.DonationX.RedirectUri}&" +
                          $"response_type=code&scope={Uri.EscapeDataString(Scope)}&" +
                          $"code_challenge={codeChallenge}&code_challenge_method=S256";
-
-        Console.WriteLine("Откройте ссылку в браузере для авторизации:\n" + authUrl);
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = authUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            Console.WriteLine("Откройте ссылку вручную: " + authUrl);
+        }
 
         var httpListener = new HttpListener();
-        httpListener.Prefixes.Add(RedirectUri.EndsWith("/") ? RedirectUri : RedirectUri + "/");
+        httpListener.Prefixes.Add(_config.DonationX.RedirectUri + "/");
         httpListener.Start();
 
         var context = await httpListener.GetContextAsync();
-        string code = context.Request.QueryString["code"];
+        var code = context.Request.QueryString["code"];
 
-        byte[] buffer = Encoding.UTF8.GetBytes("<html><body><script>window.close();</script>Авторизация успешна!</body></html>");
+        Byte[] buffer = Encoding.UTF8.GetBytes(
+            "<html><body><script>window.close();</script>Авторизация успешна!</body></html>"
+        );
         context.Response.ContentLength64 = buffer.Length;
         context.Response.OutputStream.Write(buffer, 0, buffer.Length);
         context.Response.OutputStream.Close();
         httpListener.Stop();
 
-        if (string.IsNullOrEmpty(code))
+        if (String.IsNullOrEmpty(code))
             throw new Exception("Код авторизации не получен.");
 
-        var values = new Dictionary<string, string>
+
+        var values = new Dictionary<String, String>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
-            ["client_id"] = ClientId,
-            ["redirect_uri"] = RedirectUri,
+            ["client_id"] = _config.DonationX.ClientId,
+            ["redirect_uri"] = _config.DonationX.RedirectUri,
             ["code_verifier"] = codeVerifier
         };
 
@@ -73,34 +107,47 @@ class DonateXClient
         var response = await httpClient.PostAsync("https://donatex.gg/api/connect/token", content);
         var json = await response.Content.ReadAsStringAsync();
         var obj = JObject.Parse(json);
+        if (obj["access_token"] == null)
+            throw new Exception("Access token не получен: " + json);
 
-        return obj["access_token"]?.Value<string>();
+        return obj["access_token"].Value<String>();
     }
 
-    static async Task SubscribeToDonationsAsync(string accessToken)
+    private async Task SubscribeToDonationsAsync(String accessToken)
     {
+        var hubUrl = $"https://donatex.gg/api/public-donations-hub?access_token={accessToken}";
+
         var connection = new HubConnectionBuilder()
-            .WithUrl($"https://donatex.gg/api/public-donations-hub?access_token={accessToken}")
+            .WithUrl(hubUrl)
             .WithAutomaticReconnect()
             .Build();
 
-        connection.On<JObject>("DonationCreated", donation =>
+        connection.On("DonationCreated", async (Object donation) =>
         {
-            string username = donation["username"]?.ToString();
-            string message = donation["message"]?.ToString();
-            string currency = donation["currency"]?.ToString();
-            decimal amount = donation["amount"]?.Value<decimal>() ?? 0;
-            string musicLink = donation["musicLink"]?.ToString();
-
-            Console.WriteLine($"Новый донат от {username}: {amount} {currency}");
-            Console.WriteLine($"Сообщение: {message}");
-            if (!string.IsNullOrEmpty(musicLink))
-                Console.WriteLine($"Музыка: {musicLink}");
-            Console.WriteLine("-------------------------");
+            String jsonString;
+            if (donation is String s)
+            {
+                jsonString = s;
+            }
+            else
+            {
+                jsonString = System.Text.Json.JsonSerializer.Serialize(donation);
+            }
+            var donationData = JObject.Parse(jsonString);
+            var summa = donationData["amountInRub"]?.Value<Decimal>() ?? 0;
+            
+            var donationObj = new Donation
+            {
+                Id = donationData["id"]?.Value<String>(),
+                Username = donationData["username"]?.Value<String>(),
+                Message = donationData["message"]?.Value<String>(),
+                MusicLink = summa >= _config.DonationX.Summa ? donationData["musicLink"]?.Value<String>() : null,
+                AmountInRub = donationData["amountInRub"]?.Value<Decimal>() ?? 0,
+            };
+            if (OnDonation != null)
+                 OnDonation.Invoke(donationObj);
         });
-
         await connection.StartAsync();
-        Console.WriteLine("Подписка на донаты активна. Ожидание новых донатов...");
-        await Task.Delay(-1);
+        await Task.Delay(Timeout.Infinite);
     }
 }

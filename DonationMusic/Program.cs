@@ -3,19 +3,82 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Newtonsoft.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 public class Data
 {
-    public List<string> PlayerActive = new();
-    public List<string> PlayerPassed = new();
+    public List<String> PlayerActive = new();
+    public List<String> PlayerPassed = new();
+}
+
+public class Config
+{
+    [JsonProperty("Настройка DonationAlerts")]
+    public DonationAlerts DonationAlerts = new();
+
+    [JsonProperty("Настройка DonationX")] 
+    public DonationX DonationX = new();
+
+    [JsonProperty("WebHook для отправки текущей песни (если надо будет)")]
+    public String PlayingWebhookUrl = "";
+}
+
+public class DonationAlerts
+{
+    [JsonProperty("ID приложения")] public String ClientId = "";
+
+    [JsonProperty("Секретный токен приложения")]
+    public String ClientSecret = "";
+
+    [JsonProperty("Секретный токен виджета")]
+    public String WidgetToken = "";
+ 
+    [JsonProperty("URL для отклика")] 
+    public String RedirectUri = "http://localhost:5000/callback/";
+    
+    [JsonProperty("Минимальный донат на музыку (чтобы API меньше дёргать)")]
+    public Int32 Summa = 100;
+}
+
+public class DonationX
+{
+    [JsonProperty("ID клиента")] 
+    public String ClientId = "";
+    
+    [JsonProperty("URL для отклика")] 
+    public String RedirectUri = "http://localhost:3000/callback";
+
+    [JsonProperty("Минимальный донат на музыку (чтобы API меньше дёргать)")]
+    public Int32 Summa = 100;
 }
 
 class Program
 {
-    private static readonly object logLock = new();
-    private static readonly string logFile = "error.log";
+    private static readonly Object logLock = new();
+    private static readonly String logFile = "error.log";
+    private static String currentNowPlayingId = null;
+    private static readonly HttpClient http = new();
+    private static Config _config = JsonLoader.LoadJson<Config>("config.json");
+    private static Data data = JsonLoader.LoadJson<Data>("data.json");
+    private static HttpListener listener;
+    private static Object lockObj = new();
 
-    public static void Log(Exception ex, string context = null)
+    private static List<WebSocket> wsClients = new();
+    
+    private static Boolean daConfigured = new[]
+    {
+        _config.DonationAlerts.WidgetToken,
+        _config.DonationAlerts.ClientId,
+        _config.DonationAlerts.ClientSecret
+    }.All(s => !String.IsNullOrWhiteSpace(s));
+    
+    private static Boolean dxConfigured = new[]
+    {
+        _config.DonationX.ClientId,
+    }.All(s => !String.IsNullOrWhiteSpace(s));
+    
+    public static void Log(Exception ex, String context = null)
     {
         try
         {
@@ -34,12 +97,6 @@ class Program
             // логгер упал
         }
     }
-
-    private static Data data = JsonLoader.LoadJson<Data>("data.json");
-    private static HttpListener listener;
-    private static object lockObj = new();
-
-    private static List<WebSocket> wsClients = new();
 
     private static void Welcome()
     {
@@ -67,31 +124,73 @@ class Program
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine("===================================");
 
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("URL ПЛЕЕРА : ");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("http://localhost:666");
+
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("URL НАЗВАНИЯ МУЗЫКИ КОТОРАЯ ИГРАЕТ : ");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("http://localhost:666/now");
+        
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("URL СОЛИЧЕСТВА МУЗЫКИ В ОЧЕРЕДИ : ");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("http://localhost:666/count");
+        
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("ТОКЕН : ");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("ХЗ, Я НЕ ДАМ СПАЛИТЬ))");
+
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("===================================");
+
         Console.ResetColor();
     }
-    private static async Task Mainы()
+
+    private static async Task Main()
     {
-        Welcome();
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         try
         {
-            var daClient = new DonationAlertsClient();
-            await daClient.InitializeAsync();
-
-            daClient.OnDonation += async donation =>
+            if (daConfigured)
             {
-                string videoId = AddVideo(donation.Url);
-                if (videoId != null)
-                    await BroadcastState();
-            };
+                var daClient = new DonationAlertsClient();
+                await daClient.InitializeAsync();
 
-            _ = daClient.StartAsync();
+                daClient.OnDonation += async donation =>
+                {
+                    String videoId = AddVideo(donation.Url);
+                    if (videoId != null)
+                        await BroadcastState();
+                };
 
+                _ = daClient.StartAsync();
+            }
+
+            if (dxConfigured)
+            {
+                var dxClient = new DonateXClient();
+                await dxClient.InitializeAsync();
+
+                dxClient.OnDonation += async donation =>
+                {
+                    String videoId = AddVideo(donation.MusicLink);
+                    if (videoId != null)
+                        await BroadcastState();
+                };
+
+                _ = dxClient.StartAsync();
+            }
+            
             listener = new HttpListener();
             listener.Prefixes.Add("http://localhost:666/");
             listener.Start();
 
-            Console.WriteLine("http://localhost:666/");
-            Console.WriteLine("http://localhost:666/now");
+            Welcome();
+
             Process.Start(new ProcessStartInfo { FileName = "http://localhost:666/", UseShellExecute = true });
 
             Console.CancelKeyPress += (_, _) => JsonLoader.SaveJson("data.json", data);
@@ -150,7 +249,7 @@ class Program
                     if (root.TryGetProperty("videoId", out var idProp))
                     {
                         var id = idProp.GetString();
-                        if (!string.IsNullOrEmpty(id))
+                        if (!String.IsNullOrEmpty(id))
                         {
                             lock (lockObj)
                                 data.PlayerActive.Add(id);
@@ -186,7 +285,7 @@ class Program
 
     private static async Task SendState(WebSocket ws)
     {
-        object payload;
+        Object payload;
         lock (lockObj)
         {
             payload = new
@@ -200,7 +299,7 @@ class Program
         await Send(ws, payload);
     }
 
-    private static async Task Broadcast(object obj)
+    private static async Task Broadcast(Object obj)
     {
         List<WebSocket> clients;
         lock (wsClients)
@@ -215,6 +314,17 @@ class Program
 
     private static async Task BroadcastState()
     {
+        String first = null;
+
+        lock (lockObj)
+        {
+            if (data.PlayerActive.Count > 0)
+                first = data.PlayerActive[0];
+        }
+
+        if (first != null)
+            _ = SendNowPlaying(first);
+
         await Broadcast(new
         {
             type = "state",
@@ -223,7 +333,8 @@ class Program
         });
     }
 
-    private static async Task Send(WebSocket ws, object obj)
+
+    private static async Task Send(WebSocket ws, Object obj)
     {
         var json = JsonSerializer.Serialize(obj);
         var buf = Encoding.UTF8.GetBytes(json);
@@ -239,7 +350,7 @@ class Program
 
             if (req.Url.AbsolutePath == "/add")
             {
-                string videoId = AddVideo(req.QueryString["url"]);
+                String videoId = AddVideo(req.QueryString["url"]);
                 if (videoId != null)
                     await Broadcast(new { type = "add", videoId });
 
@@ -247,7 +358,7 @@ class Program
             }
             else if (req.Url.AbsolutePath == "/update")
             {
-                if (int.TryParse(req.QueryString["index"], out int index))
+                if (Int32.TryParse(req.QueryString["index"], out Int32 index))
                 {
                     lock (lockObj)
                     {
@@ -268,6 +379,10 @@ class Program
             {
                 Write(res, NowHtml);
             }
+            else if (req.Url.AbsolutePath == "/count")
+            {
+                Write(res, CountHtml);
+            }
             else
             {
                 Write(res, Html);
@@ -279,7 +394,7 @@ class Program
         }
     }
 
-    private static void Write(HttpListenerResponse res, string text)
+    private static void Write(HttpListenerResponse res, String text)
     {
         var buf = Encoding.UTF8.GetBytes(text);
         res.ContentLength64 = buf.Length;
@@ -287,11 +402,66 @@ class Program
         res.OutputStream.Close();
     }
 
-    static string AddVideo(string url)
+    private static async Task<String?> GetYoutubeTitle(String videoId)
     {
-        if (string.IsNullOrWhiteSpace(url)) return null;
+        try
+        {
+            using var wc = new WebClient();
+            var json = await wc.DownloadStringTaskAsync(
+                $"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={videoId}&key=AIzaSyDg0Da8M9fGfdFga8CNrZle5ohiYnPDU7o"
+            );
 
-        string id = null;
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement
+                .GetProperty("items")[0]
+                .GetProperty("snippet")
+                .GetProperty("title")
+                .GetString();
+        }
+        catch
+        {
+            return videoId;
+        }
+    }
+
+    private static async Task SendNowPlaying(String videoId)
+    {
+        if (String.IsNullOrWhiteSpace(_config.PlayingWebhookUrl))
+            return;
+
+        if (currentNowPlayingId == videoId)
+            return;
+
+        currentNowPlayingId = videoId;
+
+        var title = await GetYoutubeTitle(videoId);
+        var youtubeUrl = $"https://youtu.be/{videoId}";
+
+        var payload = new
+        {
+            title = title,
+            url = youtubeUrl
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+
+        try
+        {
+            await http.PostAsync(_config.PlayingWebhookUrl,
+                new StringContent(json, Encoding.UTF8, "application/json")
+            );
+        }
+        catch (Exception ex)
+        {
+            Log(ex, "SendNowPlaying loop");
+        }
+    }
+
+    private static String AddVideo(String url)
+    {
+        if (String.IsNullOrWhiteSpace(url)) return null;
+
+        String id = null;
         try
         {
             if (url.Contains("youtube.com"))
@@ -299,11 +469,12 @@ class Program
             else if (url.Contains("youtu.be"))
                 id = new Uri(url).AbsolutePath.Trim('/');
         }
-        catch
+        catch (Exception ex)
         {
+            Log(ex, "SendNowPlaying loop");
         }
 
-        if (string.IsNullOrEmpty(id)) return null;
+        if (String.IsNullOrEmpty(id)) return null;
 
         lock (lockObj)
             data.PlayerActive.Add(id);
@@ -311,7 +482,7 @@ class Program
         return id;
     }
 
-    static string Html => @"<!DOCTYPE html>
+    private static String Html => @"<!DOCTYPE html>
 <html lang=""ru"">
 <head>
 <meta charset=""UTF-8"">
@@ -527,7 +698,7 @@ function extractVideoId(url) {
 </html>
 ";
 
-    static string NowHtml => @"<!DOCTYPE html>
+    private static String NowHtml => @"<!DOCTYPE html>
 <html lang=""ru"">
 <head>
 <meta charset=""UTF-8"">
@@ -598,4 +769,56 @@ connect();
 </script>
 </body>
 </html>";
+
+    private static String CountHtml => @"<!DOCTYPE html>
+<html lang=""ru"">
+<head>
+<meta charset=""UTF-8"">
+<title>Queue Count</title>
+<style>
+body{
+    margin:0;
+    background:#000;
+    color:#fff;
+    font-family:Arial;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+#text{
+    font-size:64px;
+    font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<div id=""text"">ОЧЕРЕДЬ МУЗИКИ: 0</div>
+
+<script>
+let ws;
+const textEl = document.getElementById('text');
+
+function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'state') {
+            const count = msg.active ? msg.active.length : 0;
+            textEl.textContent = `ОЧЕРЕДЬ МУЗИКИ: ${count}`;
+        }
+    };
+
+    ws.onclose = () => setTimeout(connect, 2000);
+}
+
+connect();
+</script>
+
+</body>
+</html>";
+
 }
