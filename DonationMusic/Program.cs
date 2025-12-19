@@ -17,8 +17,8 @@ public class Config
     [JsonProperty("Настройка DonationAlerts")]
     public DonationAlerts DonationAlerts = new();
 
-    [JsonProperty("Настройка DonationX")] 
-    public DonationX DonationX = new();
+    [JsonProperty("Настройка DonateX")] 
+    public DonateX DonateX = new();
 
     [JsonProperty("WebHook для отправки текущей песни (если надо будет)")]
     public String PlayingWebhookUrl = "";
@@ -26,7 +26,8 @@ public class Config
 
 public class DonationAlerts
 {
-    [JsonProperty("ID приложения")] public String ClientId = "";
+    [JsonProperty("ID приложения")] public 
+        String ClientId = "";
 
     [JsonProperty("Секретный токен приложения")]
     public String ClientSecret = "";
@@ -41,7 +42,7 @@ public class DonationAlerts
     public Int32 Summa = 100;
 }
 
-public class DonationX
+public class DonateX
 {
     [JsonProperty("ID клиента")] 
     public String ClientId = "";
@@ -75,7 +76,7 @@ class Program
     
     private static Boolean dxConfigured = new[]
     {
-        _config.DonationX.ClientId,
+        _config.DonateX.ClientId,
     }.All(s => !String.IsNullOrWhiteSpace(s));
     
     public static void Log(Exception ex, String context = null)

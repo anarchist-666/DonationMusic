@@ -58,7 +58,7 @@ public class DonateXClient
         var (codeVerifier, codeChallenge) = GeneratePkce();
 
         String authUrl = $"https://donatex.gg/api/connect/authorize?" +
-                         $"client_id={_config.DonationX.ClientId}&redirect_uri={_config.DonationX.RedirectUri}&" +
+                         $"client_id={_config.DonateX.ClientId}&redirect_uri={_config.DonateX.RedirectUri}&" +
                          $"response_type=code&scope={Uri.EscapeDataString(Scope)}&" +
                          $"code_challenge={codeChallenge}&code_challenge_method=S256";
         try
@@ -75,7 +75,7 @@ public class DonateXClient
         }
 
         var httpListener = new HttpListener();
-        httpListener.Prefixes.Add(_config.DonationX.RedirectUri + "/");
+        httpListener.Prefixes.Add(_config.DonateX.RedirectUri + "/");
         httpListener.Start();
 
         var context = await httpListener.GetContextAsync();
@@ -97,8 +97,8 @@ public class DonateXClient
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
-            ["client_id"] = _config.DonationX.ClientId,
-            ["redirect_uri"] = _config.DonationX.RedirectUri,
+            ["client_id"] = _config.DonateX.ClientId,
+            ["redirect_uri"] = _config.DonateX.RedirectUri,
             ["code_verifier"] = codeVerifier
         };
 
@@ -141,7 +141,7 @@ public class DonateXClient
                 Id = donationData["id"]?.Value<String>(),
                 Username = donationData["username"]?.Value<String>(),
                 Message = donationData["message"]?.Value<String>(),
-                MusicLink = summa >= _config.DonationX.Summa ? donationData["musicLink"]?.Value<String>() : null,
+                MusicLink = summa >= _config.DonateX.Summa ? donationData["musicLink"]?.Value<String>() : null,
                 AmountInRub = donationData["amountInRub"]?.Value<Decimal>() ?? 0,
             };
             if (OnDonation != null)
